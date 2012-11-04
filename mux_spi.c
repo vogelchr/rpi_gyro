@@ -111,8 +111,8 @@ mux_spi_open(){
 		if(!p->gpio[i])
 			goto err;
 		/* initialize multiplexer bits to 0 */
-		if(sysfs_gpio_value(p->gpio[i],0) ||
-		   sysfs_gpio_direction(p->gpio[i],1)
+		if(sysfs_gpio_direction(p->gpio[i],1) ||
+		   sysfs_gpio_value(p->gpio[i],0)
 		)
 			goto err;
 	}
