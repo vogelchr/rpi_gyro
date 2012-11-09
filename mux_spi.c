@@ -18,6 +18,7 @@
 
 static const int gpio_num[NUM_GPIO] = { 25 };
 
+
 struct mux_spi {
 	unsigned int gpiobits;
 	struct sysfs_gpio *gpio[NUM_GPIO];
@@ -157,4 +158,51 @@ err:
 			sysfs_gpio_close(p->gpio[i]);
 	}
 	return NULL;
+}
+
+struct mux_spi_single {
+	struct mux_spi *parent;
+	unsigned int gpiobits;
+	int spinum;
+	char spibpw;
+	char spimode;
+	char spilsb;
+};
+
+struct mux_spi_single *
+mux_spi_single_create(struct mux_spi *parent, unsigned int gpiobits,
+	int spinum, char spibpw, char spimode, char spilsb)
+{
+	struct mux_spi_single *p;
+
+	p=calloc(1,sizeof(*p));
+
+	p->parent = parent;
+	p->gpiobits = gpiobits;
+	p->spinum = spinum;
+	p->spibpw = spibpw;
+	p->spimode = spimode;
+	p->spilsb = spilsb;
+#if 0
+	fprintf(stderr,"%s: %p, 0x%08x, %d, %d, %d, %d -> %p\n",
+		__FUNCTION__,parent,gpiobits,spinum,spibpw,spimode,spilsb,p);
+#endif
+	return p;
+}
+
+int
+mux_spi_single_ioc_msg(struct mux_spi_single *p,
+		struct spi_ioc_transfer *xfer,
+		int nxfer)
+{
+
+//	fprintf(stderr,"%s: %p, %p, %d\n",__FUNCTION__,p,xfer,nxfer);
+
+	return mux_spi_ioc_msg(p->parent,
+		p->gpiobits,
+		p->spinum,
+		p->spibpw,
+		p->spimode,
+		p->spilsb,
+		xfer,nxfer);
 }
