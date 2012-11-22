@@ -91,6 +91,11 @@ static const struct lsm330dlc_initdata lsm330dlc_initdata[]={
 	{ 0, 0x23, 0x80 }, /* CTRL_REG4_A (23h) */
 	{ 0, 0x24, 0x40 }, /* CTRL_REG5_A (24h) */
 	{ 0, 0x2e, 0x80 }, /* FIFO_CTRL_REG_A (2eh) */
+	{ 1, 0x20, 0x0f }, /* CTRL_REG1_G (20h) */
+	{ 1, 0x21, 0x20 }, /* CTRL_REG2_G (21h) */
+	{ 1, 0x23, 0x80 }, /* CTRL_REG4_G (23h) */
+	{ 1, 0x24, 0x40 }, /* CTRL_REG5_G (24h) */
+	{ 1, 0x2e, 0x40 }, /* FIFO_CTRL_REG_G (2eh) */
 	{ 2, 0x00, 0x00 }  /* === END ============= */
 };
 
@@ -105,8 +110,13 @@ lsm330dlc_open(struct mux_spi_single *spi_a, struct mux_spi_single *spi_g)
 	int ret;
 
 	p = calloc(1,sizeof(*p));
+
 	p->spi_a = spi_a;
 	p->spi_g = spi_g;
+
+	mux_spi_single_config(p->spi_a,8,SPI_CPHA|SPI_CPOL,0);
+	mux_spi_single_config(p->spi_g,8,SPI_CPHA|SPI_CPOL,0);
+
 
 	id = lsm330dlc_initdata;
 	while(id->device != 2){
@@ -159,15 +169,30 @@ lsm330dlc_dump_regs(struct lsm330dlc *p)
 	return 0;
 }
 
-short signed_short_from_buf(unsigned char *buf){
-	unsigned short us = buf[1]+(buf[1]<<8);
+static short
+signed_short_from_buf(unsigned char *buf)
+{
+	unsigned short us = buf[0]+(buf[1]<<8);
 	return *((short*)&us);
 }
 
 int
-lsm330dlc_read_acc(struct lsm330dlc *p, struct lsm330dlc_acc_rdg *rdg){
+lsm330dlc_read_acc(struct lsm330dlc *p, struct lsm330dlc_acc_rdg *rdg)
+{
 	unsigned char buf[9];
 	int ret;
+
+	/* FIFO_SRC_REG_A
+	   WTM | OVRN | EMPTY | FSS4 | FSS3 | FSS2 | FSS1 | FSS0 */
+	ret = lsm330dlc_read_regs(p->spi_a,0x2f,buf,1);
+	if(ret == -1)
+		return -1;
+
+	rdg->fss = buf[0] & 0x1f;
+
+	if (buf[0] & 0x20){ /* empty */
+		return 0;
+	}
 
 	/* register starts at 0x27, bit 0x40 causes the address to
 	   increment on consecutive SPI bytes */
@@ -190,6 +215,44 @@ lsm330dlc_read_acc(struct lsm330dlc *p, struct lsm330dlc_acc_rdg *rdg){
 }
 
 int
+lsm330dlc_read_gyro(struct lsm330dlc *p, struct lsm330dlc_gyro_rdg *rdg){
+	unsigned char buf[9];
+	int ret;
+
+	/* FIFO_SRC_REG_G
+	   WTM | OVRN | EMPTY | FSS4 | FSS3 | FSS2 | FSS1 | FSS0 */
+	ret = lsm330dlc_read_regs(p->spi_g,0x2f,buf,1);
+	if(ret == -1)
+		return -1;
+
+	rdg->fss = buf[0] & 0x1f;
+
+	if (buf[0] & 0x20) /* empty */
+		return 0;
+
+	/* register starts at 0x27, bit 0x40 causes the address to
+	   increment on consecutive SPI bytes */
+	ret = lsm330dlc_read_regs(p->spi_g,0x27|0x40,buf,sizeof(buf));
+	if(ret == -1)
+		return -1;
+
+	rdg->status = buf[0];  /* 27h STATUS_REG_A */
+
+	/* 28h, 29h: OUT_X_L_A, OUT_X_H_A  = buf[1], buf[2] */
+	/* 2ah, 2bh: OUT_Y_L_A, OUT_Y_H_A  = buf[3], buf[4] */
+	/* 2ch, 2dh: OUT_Z_L_A, OUT_X_H_A  = buf[5], buf[6] */
+	rdg->rot[0] = signed_short_from_buf(buf+1);
+	rdg->rot[1] = signed_short_from_buf(buf+3);
+	rdg->rot[2] = signed_short_from_buf(buf+5);
+
+	/* 2f: FIFO_SRC_REG_A, buf[8] */
+	rdg->src = buf[8];
+	return 0;
+}
+
+
+
+int
 lsm330dlc_read_temp(struct lsm330dlc *p, int *t){
 	unsigned char c;
 	int ret;
@@ -200,4 +263,6 @@ lsm330dlc_read_temp(struct lsm330dlc *p, int *t){
 		ret=-1;
 	return ret;
 }
+
+
 

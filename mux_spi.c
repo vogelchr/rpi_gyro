@@ -190,6 +190,16 @@ mux_spi_single_create(struct mux_spi *parent, unsigned int gpiobits,
 	return p;
 }
 
+extern void
+mux_spi_single_config(struct mux_spi_single *p,
+        char spibpw, char spimode, char spilsb)
+{
+	p->spibpw = spibpw;
+	p->spimode = spimode;
+	p->spilsb = spilsb;
+}
+
+
 int
 mux_spi_single_ioc_msg(struct mux_spi_single *p,
 		struct spi_ioc_transfer *xfer,

@@ -39,6 +39,10 @@ extern struct mux_spi_single *
 mux_spi_single_create(struct mux_spi *parent, unsigned int gpiobits,
         int spinum, char spibpw, char spimode, char spilsb);
 
+extern void
+mux_spi_single_config(struct mux_spi_single *p,
+	char spibpw, char spimode, char spilsb);
+
 extern int
 mux_spi_single_ioc_msg(struct mux_spi_single *p,
                 struct spi_ioc_transfer *xfer,
