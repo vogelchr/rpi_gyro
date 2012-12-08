@@ -11,11 +11,15 @@ int
 main(int argc,char **argv){
 	struct mux_spi *spi;
 	struct mux_spi_single *singlespi[4];
-	struct lsm330dlc_acc_rdg acc;
-	struct lsm330dlc_gyro_rdg gyro;
+	struct lsm330dlc_acc_rdg acc[2];
+	struct lsm330dlc_gyro_rdg gyro[2];
 	struct lsm330dlc *chip[2];
-	int i,j,temp;
+	int i,j,ch;
 	FILE *f;
+
+	/* for udelay "calibration" */
+	int delta_meas = 0;
+	int got_data = 0;
 
 	if(argc != 2){
 		fprintf(stderr,"Usage: %s output_file\n",argv[0]);
@@ -27,11 +31,6 @@ main(int argc,char **argv){
 		perror(argv[1]);
 		exit(1);
 	}
-
-	/* for udelay "calibration" */
-	int usleep_value = 2000;
-	int num_meas = 0;
-	int num_skip = 0;
 
 	if(!(spi = mux_spi_open()))
 		exit(1);
@@ -46,50 +45,46 @@ main(int argc,char **argv){
 
 	j=0;
 	while(1){
-		if(!(j % 1000)){
-			i=lsm330dlc_read_temp(chip[0],&temp);
-			if(i == -1)
-				exit(1);
+	    got_data=0;
+	    for(ch=0;ch<2;ch++){
+		i=lsm330dlc_read_acc(chip[ch],&acc[ch]);
+		if(i == -1)
+			exit(1);
+
+		i=lsm330dlc_read_gyro(chip[ch],&gyro[ch]);
+		if(i == -1)
+			exit(1);
+
+		if(acc[ch].fss){
+			fprintf(f,"ACC%d  %6d 0x%02x 0x%02x %2d %6d %6d %6d\n",ch,j,
+				acc[ch].status, acc[ch].src, acc[ch].fss,
+				acc[ch].acc[0], acc[ch].acc[1], acc[ch].acc[2]);
+			got_data++;
 		}
 
-		i=lsm330dlc_read_acc(chip[0],&acc);
-		if(i == -1)
-			exit(1);
-
-		i=lsm330dlc_read_gyro(chip[0],&gyro);
-		if(i == -1)
-			exit(1);
-
-		if(acc.fss)
-			fprintf(f,"ACC  %6d 0x%02x 0x%02x %2d %6d %6d %6d\n",j,
-				acc.status, acc.src, acc.fss,
-				acc.acc[0], acc.acc[1], acc.acc[2]);
-
-		if(gyro.fss)
-			fprintf(f,"GYRO  %6d 0x%02x 0x%02x %2d %6d %6d %6d\n",j,
-				gyro.status, gyro.src, gyro.fss,
-				gyro.rot[0], gyro.rot[1], gyro.rot[2]);
-		j++;
+		if(gyro[ch].fss){
+			fprintf(f,"GYRO%d  %6d 0x%02x 0x%02x %2d %6d %6d %6d\n",ch,j,
+				gyro[ch].status, gyro[ch].src, gyro[ch].fss,
+				gyro[ch].rot[0], gyro[ch].rot[1], gyro[ch].rot[2]);
+			got_data++;
+		}
+	    }
+	    j++;
 
 		/* ----- this is a quick hack to optimize the proper udelay value ----- */
-		if(acc.fss || gyro.fss){
-			putchar('+');
-			num_meas++;
-		} else {
-			putchar('.');
-			num_skip++;
+		if(got_data)
+			delta_meas++;
+		else
+			delta_meas--;
+
+		if(delta_meas < 2000)
+			usleep(2000 - delta_meas);
+
+		if (!( j & 63 )){
+			printf("Fifos: %d %d %d %d, read/idle delta %d\n",
+				acc[0].fss, acc[1].fss, gyro[0].fss, gyro[1].fss,delta_meas);
 		}
 
-		if(num_meas > 20){
-			if((num_meas > num_skip) && (usleep_value > 2000))
-				usleep_value -= 200;
-			if((num_meas < num_skip))
-				usleep_value += 200;
-			printf("meas = %d, skip = %d : usleep -> %d\n",num_meas, num_skip, usleep_value);
-			num_meas = num_skip = 0;
-		}
-
-		usleep(usleep_value);
 	}
 
 	exit(0);
