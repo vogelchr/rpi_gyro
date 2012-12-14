@@ -179,7 +179,7 @@ signed_short_from_buf(unsigned char *buf)
 int
 lsm330dlc_read_acc(struct lsm330dlc *p, struct lsm330dlc_acc_rdg *rdg)
 {
-	unsigned char buf[9];
+	unsigned char buf[7];
 	int ret;
 
 	/* FIFO_SRC_REG_A
@@ -188,11 +188,15 @@ lsm330dlc_read_acc(struct lsm330dlc *p, struct lsm330dlc_acc_rdg *rdg)
 	if(ret == -1)
 		return -1;
 
+	rdg->src = buf[0];
 	rdg->fss = buf[0] & 0x1f;
-
+#if 0
 	if (buf[0] & 0x20){ /* empty */
 		return 0;
 	}
+#endif
+	if(rdg->fss == 0)
+		return 0; /* nothing in fifo */
 
 	/* register starts at 0x27, bit 0x40 causes the address to
 	   increment on consecutive SPI bytes */
@@ -209,14 +213,12 @@ lsm330dlc_read_acc(struct lsm330dlc *p, struct lsm330dlc_acc_rdg *rdg)
 	rdg->acc[1] = signed_short_from_buf(buf+3);
 	rdg->acc[2] = signed_short_from_buf(buf+5);
 
-	/* 2f: FIFO_SRC_REG_A, buf[8] */
-	rdg->src = buf[8];
 	return 0;
 }
 
 int
 lsm330dlc_read_gyro(struct lsm330dlc *p, struct lsm330dlc_gyro_rdg *rdg){
-	unsigned char buf[9];
+	unsigned char buf[7];
 	int ret;
 
 	/* FIFO_SRC_REG_G
@@ -224,10 +226,13 @@ lsm330dlc_read_gyro(struct lsm330dlc *p, struct lsm330dlc_gyro_rdg *rdg){
 	ret = lsm330dlc_read_regs(p->spi_g,0x2f,buf,1);
 	if(ret == -1)
 		return -1;
-
+	rdg->src = buf[0];
 	rdg->fss = buf[0] & 0x1f;
-
+#if 0
 	if (buf[0] & 0x20) /* empty */
+		return 0;
+#endif
+	if(rdg->fss == 0)
 		return 0;
 
 	/* register starts at 0x27, bit 0x40 causes the address to
@@ -245,8 +250,6 @@ lsm330dlc_read_gyro(struct lsm330dlc *p, struct lsm330dlc_gyro_rdg *rdg){
 	rdg->rot[1] = signed_short_from_buf(buf+3);
 	rdg->rot[2] = signed_short_from_buf(buf+5);
 
-	/* 2f: FIFO_SRC_REG_A, buf[8] */
-	rdg->src = buf[8];
 	return 0;
 }
 
