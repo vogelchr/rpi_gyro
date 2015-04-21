@@ -3,9 +3,11 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include <time.h>
+#include <assert.h>
 
 #include "mux_spi.h"
 #include "lsm330dlc.h"
+
 
 int main(int argc, char **argv)
 {
@@ -14,6 +16,12 @@ int main(int argc, char **argv)
 	struct lsm330dlc_acc_rdg acc[2];
 	struct lsm330dlc_gyro_rdg gyro[2];
 	struct lsm330dlc *chip[2];
+
+	/* for printing the time */
+	struct timespec tsp;
+	char tbuf[64];
+	struct tm *stm;
+
 	int i, j, ch;
 	FILE *f;
 
@@ -58,10 +66,26 @@ int main(int argc, char **argv)
 			if (i == -1)
 				exit(1);
 
+			if (acc[ch].fss || gyro[ch].fss) {
+				int n;
+
+				if (clock_gettime(CLOCK_REALTIME, &tsp) == -1) {
+					perror("clock_gettime(CLOCK_REALTIME)");
+					exit(1);
+				}
+
+				stm = localtime(& tsp.tv_sec);
+				n = strftime(tbuf, sizeof(tbuf)-1, "%H:%M:%S", stm);
+				assert(n>0);
+
+				snprintf(tbuf+n, sizeof(tbuf)-1-n, ".%09ld", tsp.tv_nsec);
+				tbuf[sizeof(tbuf)-1]='\0';
+			}
+
 			if (acc[ch].fss) {
 				fprintf(f,
-					"ACC%d  %6d 0x%02x 0x%02x %2d %6d %6d %6d\n",
-					ch, j, acc[ch].status, acc[ch].src,
+					"ACC%d %s %6d 0x%02x 0x%02x %2d %6d %6d %6d\n",
+					ch, tbuf, j, acc[ch].status, acc[ch].src,
 					acc[ch].fss, acc[ch].acc[0],
 					acc[ch].acc[1], acc[ch].acc[2]);
 				got_data++;
@@ -69,8 +93,8 @@ int main(int argc, char **argv)
 
 			if (gyro[ch].fss) {
 				fprintf(f,
-					"GYRO%d  %6d 0x%02x 0x%02x %2d %6d %6d %6d\n",
-					ch, j, gyro[ch].status,
+					"GYR%d %s %6d 0x%02x 0x%02x %2d %6d %6d %6d\n",
+					ch, tbuf, j, gyro[ch].status,
 					gyro[ch].src, gyro[ch].fss,
 					gyro[ch].rot[0], gyro[ch].rot[1],
 					gyro[ch].rot[2]);
