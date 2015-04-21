@@ -8,7 +8,6 @@
 #include "mux_spi.h"
 #include "lsm330dlc.h"
 
-
 int main(int argc, char **argv)
 {
 	struct mux_spi *spi;
@@ -16,6 +15,7 @@ int main(int argc, char **argv)
 	struct lsm330dlc_acc_rdg acc[2];
 	struct lsm330dlc_gyro_rdg gyro[2];
 	struct lsm330dlc *chip[2];
+	time_t last_sec;
 
 	/* for printing the time */
 	struct timespec tsp;
@@ -26,8 +26,13 @@ int main(int argc, char **argv)
 	FILE *f;
 
 	/* for udelay "calibration" */
-	int delta_meas = 0;
+	int sleep_value = 0;
 	int got_data = 0;
+
+	unsigned int gyro_cnt, acc_cnt;
+
+	gyro_cnt=0;
+	acc_cnt=0;
 
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s output_file\n", argv[0]);
@@ -53,6 +58,12 @@ int main(int argc, char **argv)
 				   singlespi[2 * i + 1]);
 		lsm330dlc_dump_regs(chip[i]);
 	}
+
+	if (clock_gettime(CLOCK_REALTIME, &tsp) == -1) {
+		perror("clock_gettime(CLOCK_REALTIME)");
+		exit(1);
+	}
+	last_sec = tsp.tv_sec;
 
 	j = 0;
 	while (1) {
@@ -80,6 +91,15 @@ int main(int argc, char **argv)
 
 				snprintf(tbuf+n, sizeof(tbuf)-1-n, ".%09ld", tsp.tv_nsec);
 				tbuf[sizeof(tbuf)-1]='\0';
+
+				if (last_sec != tsp.tv_sec) {
+					fprintf(stderr,"Gyro: %9u Acc: %9u Sleep: %d us\n",
+						gyro_cnt, acc_cnt, sleep_value);
+					gyro_cnt = 0;
+					acc_cnt = 0;
+					fflush(f);
+				}
+				last_sec = tsp.tv_sec;
 			}
 
 			if (acc[ch].fss) {
@@ -89,6 +109,7 @@ int main(int argc, char **argv)
 					acc[ch].fss, acc[ch].acc[0],
 					acc[ch].acc[1], acc[ch].acc[2]);
 				got_data++;
+				acc_cnt++;
 			}
 
 			if (gyro[ch].fss) {
@@ -99,29 +120,19 @@ int main(int argc, char **argv)
 					gyro[ch].rot[0], gyro[ch].rot[1],
 					gyro[ch].rot[2]);
 				got_data++;
+				gyro_cnt++;
 			}
 		}
 		j++;
 
 		/* ----- this is a quick hack to optimize the proper udelay value ----- */
-		if (got_data)
-			delta_meas++;
+		if (got_data && sleep_value > 0)
+			sleep_value--;
 		else
-			delta_meas--;
+			sleep_value++;
 
-		if (delta_meas < 2000)
-			usleep(2000 - delta_meas);
-
-/*
-		if (!(j & 63)) {
-			printf("Fifos: %d %d %d %d, read/idle delta %d\n",
-			       acc[0].fss, acc[1].fss, gyro[0].fss,
-			       gyro[1].fss, delta_meas);
-		}
-*/
-
-		if (got_data)
-			fflush(f);
+		if (sleep_value > 0)
+			usleep(sleep_value);
 	}
 
 	exit(0);
